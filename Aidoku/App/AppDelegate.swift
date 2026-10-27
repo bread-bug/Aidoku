@@ -164,7 +164,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // time to set up iCloud and return the requested URL, you should always call it from a secondary thread.
         Task.detached {
             let isiCloudAvailable = FileManager.default.url(forUbiquityContainerIdentifier: nil) != nil
-            if !isiCloudAvailable {
+            if isiCloudAvailable {
+                BackupManager.useICloudDirectory()
+            } else {
                 LogManager.logger.info("iCloud unavailable")
             }
             AppSettings.flags.isiCloudAvailable.register(isiCloudAvailable)

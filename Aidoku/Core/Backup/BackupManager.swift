@@ -12,7 +12,51 @@ import UIKit
 actor BackupManager {
     static let shared = BackupManager()
 
-    static let directory = FileManager.default.documentDirectory.appendingPathComponent("Backups", isDirectory: true)
+    private static let localDirectory = FileManager.default.documentDirectory.appendingPathComponent("Backups", isDirectory: true)
+
+    /// Where backups are stored: the iCloud container's Documents folder once it has been resolved,
+    /// otherwise the app's local Documents folder.
+    static var directory: URL {
+        iCloudDirectory.value ?? localDirectory
+    }
+
+    private static let iCloudDirectory = ICloudDirectory()
+
+    private final class ICloudDirectory: @unchecked Sendable {
+        private let lock = NSLock()
+        private var url: URL?
+
+        var value: URL? {
+            lock.lock()
+            defer { lock.unlock() }
+            return url
+        }
+
+        func set(_ newValue: URL) {
+            lock.lock()
+            defer { lock.unlock() }
+            url = newValue
+        }
+    }
+
+    /// Moves backups to the iCloud container so they show up in iCloud Drive.
+    /// Blocks while iCloud sets up the container, so never call it from the main thread.
+    static func useICloudDirectory() {
+        guard let root = FileManager.default.url(forUbiquityContainerIdentifier: nil) else { return }
+        let target = root
+            .appendingPathComponent("Documents", isDirectory: true)
+            .appendingPathComponent("Backups", isDirectory: true)
+        target.createDirectory()
+        // existing local backups move over once; a name that already exists there is left alone
+        for file in localDirectory.contentsByDateModified {
+            let destination = target.appendingPathComponent(file.lastPathComponent)
+            if !destination.exists {
+                try? FileManager.default.moveItem(at: file, to: destination)
+            }
+        }
+        iCloudDirectory.set(target)
+        NotificationCenter.default.post(name: .updateBackupList, object: nil)
+    }
 
     static var backupUrls: [URL] {
         Self.directory.contentsByDateModified
